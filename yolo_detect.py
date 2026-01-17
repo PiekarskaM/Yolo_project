@@ -124,6 +124,11 @@ avg_frame_rate = 0
 frame_rate_buffer = []
 fps_avg_len = 200
 img_count = 0
+total_amount = 0.0
+object_list = []
+paragon = []
+paragons_counter = 0
+day_amount = 0
 
 # Begin inference loop
 while True:
@@ -173,7 +178,7 @@ while True:
 
     # Go through each detection and get bbox coords, confidence, and class
     
-    total_amount = 0.0
+    
 
     for i in range(len(detections)):
 
@@ -202,19 +207,47 @@ while True:
 
             cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), color, cv2.FILLED) # Draw white box to put label text in
             
+            unique_label = classname + str(object_count)
+            if classname == "kinder_bueno":
+                if unique_label not in object_list:
+                    paragon.append(classname)
+                    object_list.append(unique_label)
+                    total_amount += 3.62
+            elif classname == "knoppers":
+                if unique_label not in object_list:
+                    paragon.append(classname)
+                    object_list.append(unique_label)
+                    total_amount += 4.52
+            elif classname == "lion":
+                if unique_label not in object_list:
+                    paragon.append(classname)
+                    object_list.append(unique_label)
+                    total_amount += 2.71
+            elif classname == "price_polo":
+                if unique_label not in object_list:
+                    paragon.append(classname)
+                    object_list.append(unique_label)
+                    total_amount += 2.71
+            elif classname == "snickers":
+                if unique_label not in object_list:
+                    paragon.append(classname)
+                    object_list.append(unique_label)
+                    total_amount += 3.61
+            elif classname == "twix":
+                if unique_label not in object_list:
+                    paragon.append(classname)
+                    object_list.append(unique_label)
+                    total_amount += 4.98
+            elif classname == "separator":
+                if total_amount>0:
+                    print(f'Paragon: ITEMS: {paragon},TOTAL: {total_amount}')
+                    paragon = []
+                    paragons_counter += 1
+                    day_amount += total_amount
+                    total_amount = 0
 
-            if label == "kinder_bueno":
-                total_amount += 3.62
-            elif label == "knoppers":
-                total_amount += 4.52
-            elif label == "lion":
-                total_amount += 2.71
-            elif label == "price_polo":
-                total_amount += 2.71
-            elif label == "snickers":
-                total_amount += 3.61
-            elif label == "twix":
-                total_amount += 4.98
+
+
 
                 
 
@@ -259,6 +292,8 @@ while True:
     # Calculate average FPS for past frames
     avg_frame_rate = np.mean(frame_rate_buffer)
 
+
+print(f'paragonow dzis: {paragons_counter}, obrot razem: {day_amount}')
 
 # Clean up
 print(f'Average pipeline FPS: {avg_frame_rate:.2f}')
