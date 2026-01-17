@@ -172,6 +172,9 @@ while True:
     object_count = 0
 
     # Go through each detection and get bbox coords, confidence, and class
+    
+    total_amount = 0.0
+
     for i in range(len(detections)):
 
         # Get bounding box coordinates
@@ -196,6 +199,24 @@ while True:
             label = f'{classname}: {int(conf*100)}%'
             labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1) # Get font size
             label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+
+            if label == "kinder_bueno":
+                total_amount += 3.62
+            elif label == "knoppers":
+                total_amount += 4.52
+            elif label == "lion":
+                total_amount += 2.71
+            elif label == "price_polo":
+                total_amount += 2.71
+            elif label == "snickers":
+                total_amount += 3.61
+            elif label == "twix":
+                total_amount += 4.98
+            elif label == "separator":
+                cv2.putText(frame, str(total_amount), (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1) 
+                total_amount = 0
+                
+
             cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), color, cv2.FILLED) # Draw white box to put label text in
             cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1) # Draw label text
 
