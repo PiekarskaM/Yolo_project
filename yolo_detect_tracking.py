@@ -169,8 +169,10 @@ while True:
     frame = cv2.resize(frame,(640,640))
 
     # Run inference on frame
-    results = model(frame, imgsz=416, verbose=False)
+    #results = model(frame, imgsz=416, verbose=False)
+    results = model.track(frame, persist=True, verbose=False)
     
+
     # Extract results
     detections = results[0].boxes
 
@@ -196,8 +198,15 @@ while True:
         # Get bounding box confidence
         conf = detections[i].conf.item()
 
+        track_id = detections[i].id
+        if track_id is not None:
+            track_id = int(track_id.item())
+        else:
+            continue   # pomiń, jeśli tracker jeszcze nie przypisał ID
+
+
         # Draw box if confidence threshold is high enough
-        if conf > 0.6:
+        if conf > 0.5:
 
             color = bbox_colors[classidx % 10]
             cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
@@ -208,35 +217,35 @@ while True:
 
             cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), color, cv2.FILLED) # Draw white box to put label text in
             
-            unique_label = classname + str(object_count)
+            unique_label = classname + str(track_id)
             if classname == "kinder_bueno":
                 if unique_label not in object_list:
-                    paragon.append(classname+ str(object_count))
+                    paragon.append(classname+ str(track_id))
                     object_list.append(unique_label)
                     total_amount += 3.62
             elif classname == "knoppers":
                 if unique_label not in object_list:
-                    paragon.append(classname+ str(object_count))
+                    paragon.append(classname+ str(track_id))
                     object_list.append(unique_label)
                     total_amount += 4.52
             elif classname == "lion":
                 if unique_label not in object_list:
-                    paragon.append(classname+ str(object_count))
+                    paragon.append(classname+ str(track_id))
                     object_list.append(unique_label)
                     total_amount += 2.71
             elif classname == "price_polo":
                 if unique_label not in object_list:
-                    paragon.append(classname+ str(object_count))
+                    paragon.append(classname+ str(track_id))
                     object_list.append(unique_label)
                     total_amount += 2.71
             elif classname == "snickers":
                 if unique_label not in object_list:
-                    paragon.append(classname+ str(object_count))
+                    paragon.append(classname+ str(track_id))
                     object_list.append(unique_label)
                     total_amount += 3.61
             elif classname == "twix":
                 if unique_label not in object_list:
-                    paragon.append(classname+ str(object_count))
+                    paragon.append(classname+ str(track_id))
                     object_list.append(unique_label)
                     total_amount += 4.98
             elif classname == "separator":
@@ -246,6 +255,11 @@ while True:
                     paragons_counter += 1
                     day_amount += total_amount
                     total_amount = 0
+
+
+
+
+                
 
             cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1) # Draw label text
 
@@ -257,7 +271,7 @@ while True:
         cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10,20), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw framerate
     
     # Display detection results
-    cv2.putText(frame, f'Number of objects: {object_count} Total amount: {total_amount:.2f}', (10,40), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw total number of detected objects
+    cv2.putText(frame, f'Number of objects: {object_count} Total_amount: {total_amount}', (10,40), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw total number of detected objects
     cv2.imshow('YOLO detection results',frame) # Display image
     if record: recorder.write(frame)
 
