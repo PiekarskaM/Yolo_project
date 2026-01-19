@@ -1,0 +1,13 @@
+Collecting sort-tracker
+  Using cached sort-tracker-1.0.7.tar.gz (27 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: numpy in c:\users\gosia\anaconda3\envs\yolo-env1\lib\site-packages (from sort-tracker) (2.2.6)
+Building wheels for collected packages: sort-tracker
+  Building wheel for sort-tracker (pyproject.toml): started
+  Building wheel for sort-tracker (pyproject.toml): finished with status 'error'
+Failed to build sort-tracker

@@ -20,7 +20,7 @@ pip install -r requirements.txt
 
 ## Propozycja uruchomienia z wybranym źródłem obrazu:
 
-python yolo_detect.py --model my_model.pt --source usb0
+python yolo_detect_tracking.py --model my_model.pt --source usb0
 
-python yolo_detect.py --model my_model.pt --source test_film5.mp4
+python yolo_detect_tracking.py --model my_model.pt --source test_film5.mp4
 

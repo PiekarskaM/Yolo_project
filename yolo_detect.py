@@ -197,7 +197,7 @@ while True:
         conf = detections[i].conf.item()
 
         # Draw box if confidence threshold is high enough
-        if conf > 0.6:
+        if conf > 0.7:
 
             color = bbox_colors[classidx % 10]
             cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
@@ -246,7 +246,7 @@ while True:
                     paragons_counter += 1
                     day_amount += total_amount
                     total_amount = 0
-
+            
             cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1) # Draw label text
 
             # Basic example: count the number of objects in the image

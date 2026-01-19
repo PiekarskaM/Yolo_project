@@ -8,308 +8,188 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-# Define and parse user input arguments
+# Dodatkowo pip install sort
+from sort import Sort  # https://github.com/abewley/sort
 
+# --- ARGUMENTY ---
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', help='Path to YOLO model file (example: "runs/detect/train/weights/best.pt")',
-                    required=True)
-parser.add_argument('--source', help='Image source, can be image file ("test.jpg"), \
-                    image folder ("test_dir"), video file ("testvid.mp4"), or index of USB camera ("usb0")', 
-                    required=True)
-parser.add_argument('--thresh', help='Minimum confidence threshold for displaying detected objects (example: "0.4")',
-                    default=0.5)
-parser.add_argument('--resolution', help='Resolution in WxH to display inference results at (example: "640x480"), \
-                    otherwise, match source resolution',
-                    default=None)
-parser.add_argument('--record', help='Record results from video or webcam and save it as "demo1.avi". Must specify --resolution argument to record.',
-                    action='store_true')
-
+parser.add_argument('--model', required=True, help='Path to YOLO model file')
+parser.add_argument('--source', required=True, help='Image / folder / video / camera')
+parser.add_argument('--thresh', default=0.5, help='Confidence threshold')
+parser.add_argument('--resolution', default=None, help='WxH for display')
+parser.add_argument('--record', action='store_true', help='Record video output')
 args = parser.parse_args()
 
-
-# Parse user inputs
 model_path = args.model
 img_source = args.source
-min_thresh = args.thresh
+min_thresh = float(args.thresh)
 user_res = args.resolution
 record = args.record
 
-# Check if model file exists and is valid
-if (not os.path.exists(model_path)):
-    print('ERROR: Model path is invalid or model was not found. Make sure the model filename was entered correctly.')
+if not os.path.exists(model_path):
+    print('Model not found!')
     sys.exit(0)
 
-# Load the model into memory and get labemap
+# --- LOAD MODEL ---
 model = YOLO(model_path, task='detect')
 labels = model.names
 
-# Parse input to determine if image source is a file, folder, video, or USB camera
-img_ext_list = ['.jpg','.JPG','.jpeg','.JPEG','.png','.PNG','.bmp','.BMP']
+# --- DETERMINE SOURCE TYPE ---
+img_ext_list = ['.jpg','.jpeg','.png','.bmp']
 vid_ext_list = ['.avi','.mov','.mp4','.mkv','.wmv']
+
 
 if os.path.isdir(img_source):
     source_type = 'folder'
 elif os.path.isfile(img_source):
     _, ext = os.path.splitext(img_source)
-    if ext in img_ext_list:
-        source_type = 'image'
-    elif ext in vid_ext_list:
-        source_type = 'video'
-    else:
-        print(f'File extension {ext} is not supported.')
-        sys.exit(0)
+    if ext.lower() in img_ext_list: source_type = 'image'
+    elif ext.lower() in vid_ext_list: source_type = 'video'
+    else: sys.exit(f'Unsupported file type: {ext}')
 elif 'usb' in img_source:
     source_type = 'usb'
     usb_idx = int(img_source[3:])
-elif 'picamera' in img_source:
-    source_type = 'picamera'
-    picam_idx = int(img_source[8:])
 else:
-    print(f'Input {img_source} is invalid. Please try again.')
-    sys.exit(0)
+    sys.exit(f'Invalid input: {img_source}')
 
-# Parse user-specified display resolution
+# --- RESOLUTION ---
 resize = False
 if user_res:
     resize = True
-    resW, resH = int(user_res.split('x')[0]), int(user_res.split('x')[1])
+    resW, resH = map(int, user_res.split('x'))
 
-# Check if recording is valid and set up recording
+# --- VIDEO / CAMERA CAPTURE ---
+if source_type == 'video': cap = cv2.VideoCapture(img_source)
+elif source_type == 'usb': cap = cv2.VideoCapture(usb_idx)
+
+if user_res:
+    cap.set(3, resW)
+    cap.set(4, resH)
+
+# --- RECORDING ---
 if record:
-    if source_type not in ['video','usb']:
-        print('Recording only works for video and camera sources. Please try again.')
-        sys.exit(0)
     if not user_res:
-        print('Please specify resolution to record video at.')
+        print('Please specify resolution for recording.')
         sys.exit(0)
-    
-    # Set up recording
     record_name = 'demo1.avi'
     record_fps = 30
     recorder = cv2.VideoWriter(record_name, cv2.VideoWriter_fourcc(*'MJPG'), record_fps, (resW,resH))
 
-# Load or initialize image source
-if source_type == 'image':
-    imgs_list = [img_source]
-elif source_type == 'folder':
-    imgs_list = []
-    filelist = glob.glob(img_source + '/*')
-    for file in filelist:
-        _, file_ext = os.path.splitext(file)
-        if file_ext in img_ext_list:
-            imgs_list.append(file)
-elif source_type == 'video' or source_type == 'usb':
-
-    if source_type == 'video': cap_arg = img_source
-    elif source_type == 'usb': cap_arg = usb_idx
-    cap = cv2.VideoCapture(cap_arg)
-
-    # Set camera or video resolution if specified by user
-    if user_res:
-        ret = cap.set(3, resW)
-        ret = cap.set(4, resH)
-
-elif source_type == 'picamera':
-    from picamera2 import Picamera2
-    cap = Picamera2()
-    cap.configure(cap.create_video_configuration(main={"format": 'XRGB8888', "size": (resW, resH)}))
-    cap.start()
-
-# Set bounding box colors (using the Tableu 10 color scheme)
+# --- COLORS ---
 bbox_colors = [(164,120,87), (68,148,228), (93,97,209), (178,182,133), (88,159,106), 
-              (96,202,231), (159,124,168), (169,162,241), (98,118,150), (172,176,184)]
+               (96,202,231), (159,124,168), (169,162,241), (98,118,150), (172,176,184)]
 
-# Initialize control and status variables
-avg_frame_rate = 0
-frame_rate_buffer = []
-fps_avg_len = 200
-img_count = 0
+# --- SORT TRACKER ---
+tracker = Sort(max_age=15, min_hits=3) # prosty tracker
+tracked_objects = {}  # {track_id: classname} -> do "przytrzymania" klasy
+tracked_classes = {}
+
+price = {"kinder_bueno":3.62, "knoppers":4.52, "lion":2.71, "price_polo":2.71, "snickers":3.61, "twix":4.98 }
 total_amount = 0.0
 object_list = []
 paragon = []
 paragons_counter = 0
 day_amount = 0
 
-# Begin inference loop
+
+
+# --- INFERENCE LOOP ---
 while True:
+    ret, frame = cap.read()
+    if not ret:
+        print('End of video / cannot read frame')
+        break
 
-    t_start = time.perf_counter()
+    # resize na potrzeby wyświetlania
+    frame = cv2.resize(frame, (640,640))
 
-    # Load frame from image source
-    if source_type == 'image' or source_type == 'folder': # If source is image or image folder, load the image using its filename
-        if img_count >= len(imgs_list):
-            print('All images have been processed. Exiting program.')
-            sys.exit(0)
-        img_filename = imgs_list[img_count]
-        frame = cv2.imread(img_filename)
-        img_count = img_count + 1
-    
-    elif source_type == 'video': # If source is a video, load next frame from video file
-        ret, frame = cap.read()
-        if not ret:
-            print('Reached end of the video file. Exiting program.')
-            break
-    
-    elif source_type == 'usb': # If source is a USB camera, grab frame from camera
-        ret, frame = cap.read()
-        if (frame is None) or (not ret):
-            print('Unable to read frames from the camera. This indicates the camera is disconnected or not working. Exiting program.')
-            break
-
-    elif source_type == 'picamera': # If source is a Picamera, grab frames using picamera interface
-        frame_bgra = cap.capture_array()
-        frame = cv2.cvtColor(np.copy(frame_bgra), cv2.COLOR_BGRA2BGR)
-        if (frame is None):
-            print('Unable to read frames from the Picamera. This indicates the camera is disconnected or not working. Exiting program.')
-            break
-
-    # Resize frame to desired display resolution
-    #if resize == True:
-    #    frame = cv2.resize(frame,(resW,resH))
-    frame = cv2.resize(frame,(640,640))
-
-    # Run inference on frame
-    #results = model(frame, imgsz=416, verbose=False)
-    results = model.track(frame, persist=True, verbose=False)
-    
-
-    # Extract results
+    # YOLO DETECTION
+    results = model(frame, imgsz=416, verbose=False)
     detections = results[0].boxes
 
-    # Initialize variable for basic object counting example
-    object_count = 0
+    # --- PRZYGOTUJ DETECTIONS DLA TRACKERA ---
+    # Tracker wymaga listy: [[x1,y1,x2,y2,score], ...]
+    dets_for_tracker = []
+    for det in detections:
+        conf = det.conf.item()
+        if conf < min_thresh: continue
+        xyxy = det.xyxy.cpu().numpy().squeeze()
+        dets_for_tracker.append([xyxy[0], xyxy[1], xyxy[2], xyxy[3], conf])
 
-    # Go through each detection and get bbox coords, confidence, and class
-    
-    
+    dets_for_tracker = np.array(dets_for_tracker)
 
-    for i in range(len(detections)):
+    # --- TRACKING ---
+    if len(dets_for_tracker) == 0:
+        tracks = tracker.update(np.empty((0,5)))
+    else:
+        tracks = tracker.update(dets_for_tracker)  # returns [[x1,y1,x2,y2,track_id], ...]
 
-        # Get bounding box coordinates
-        # Ultralytics returns results in Tensor format, which have to be converted to a regular Python array
-        xyxy_tensor = detections[i].xyxy.cpu() # Detections in Tensor format in CPU memory
-        xyxy = xyxy_tensor.numpy().squeeze() # Convert tensors to Numpy array
-        xmin, ymin, xmax, ymax = xyxy.astype(int) # Extract individual coordinates and convert to int
+    # --- RYSOWANIE BBOX I PRZYTRZYMANIE KLASY ---
 
-        # Get bounding box class ID and name
-        classidx = int(detections[i].cls.item())
-        classname = labels[classidx]
+    for trk in tracks:
+        x1,y1,x2,y2,track_id = trk
+        x1,y1,x2,y2 = map(int, [x1,y1,x2,y2])
+        track_id = int(track_id)
 
-        # Get bounding box confidence
-        conf = detections[i].conf.item()
+        # znajdź najlepsze dopasowanie z detekcji
+        best_iou = 0
+        best_class = None
 
-        track_id = detections[i].id
-        if track_id is not None:
-            track_id = int(track_id.item())
+        for det in detections:
+            xyxy = det.xyxy.cpu().numpy().squeeze()
+            xmin, ymin, xmax, ymax = map(int, xyxy)
+
+            inter_w = max(0, min(xmax,x2) - max(xmin,x1))
+            inter_h = max(0, min(ymax,y2) - max(ymin,y1))
+            inter = inter_w * inter_h
+            union = (xmax-xmin)*(ymax-ymin) + (x2-x1)*(y2-y1) - inter
+            iou = inter / (union + 1e-6)
+
+            if iou > best_iou:
+                best_iou = iou
+                best_class = labels[int(det.cls.item())]
+
+        # jeśli nowy obiekt – zapisz jego klasę
+        if track_id not in tracked_classes:
+            if best_class is not None:
+                tracked_classes[track_id] = best_class
         else:
-            continue   # pomiń, jeśli tracker jeszcze nie przypisał ID
+            # jeśli już był – ignoruj nowe klasy z YOLO
+            best_class = tracked_classes[track_id]
 
+        if track_id in tracked_classes:
+            label_class = tracked_classes[track_id]
 
-        # Draw box if confidence threshold is high enough
-        if conf > 0.5:
+            color = bbox_colors[track_id % 10]
+            cv2.rectangle(frame,(x1,y1),(x2,y2),color,2)
+            label = f'{label_class} ID:{track_id}'
+            cv2.putText(frame,label,(x1,y1-7),
+            cv2.FONT_HERSHEY_SIMPLEX,0.5,color,1)
+            if track_id not in object_list:
+                if label_class!="separator":
+                    # track_id jeszcze nie dodany
+                    paragon.append(label_class)
+                    object_list.append(track_id)
+                    total_amount += price[label_class]
+                else:
+                    if total_amount>0:
+                        print(f'Paragon: ITEMS: {paragon},TOTAL: {total_amount:.2f}')
+                        paragon = []
+                        paragons_counter += 1
+                        day_amount += total_amount
+                        total_amount = 0
 
-            color = bbox_colors[classidx % 10]
-            cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
-
-            label = f'{classname}: {int(conf*100)}%'
-            labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1) # Get font size
-            label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
-
-            cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), color, cv2.FILLED) # Draw white box to put label text in
-            
-            unique_label = classname + str(track_id)
-            if classname == "kinder_bueno":
-                if unique_label not in object_list:
-                    paragon.append(classname+ str(track_id))
-                    object_list.append(unique_label)
-                    total_amount += 3.62
-            elif classname == "knoppers":
-                if unique_label not in object_list:
-                    paragon.append(classname+ str(track_id))
-                    object_list.append(unique_label)
-                    total_amount += 4.52
-            elif classname == "lion":
-                if unique_label not in object_list:
-                    paragon.append(classname+ str(track_id))
-                    object_list.append(unique_label)
-                    total_amount += 2.71
-            elif classname == "price_polo":
-                if unique_label not in object_list:
-                    paragon.append(classname+ str(track_id))
-                    object_list.append(unique_label)
-                    total_amount += 2.71
-            elif classname == "snickers":
-                if unique_label not in object_list:
-                    paragon.append(classname+ str(track_id))
-                    object_list.append(unique_label)
-                    total_amount += 3.61
-            elif classname == "twix":
-                if unique_label not in object_list:
-                    paragon.append(classname+ str(track_id))
-                    object_list.append(unique_label)
-                    total_amount += 4.98
-            elif classname == "separator":
-                if total_amount>0:
-                    print(f'Paragon: ITEMS: {paragon},TOTAL: {total_amount:.2f}')
-                    paragon = []
-                    paragons_counter += 1
-                    day_amount += total_amount
-                    total_amount = 0
-
-
-
-
-                
-
-            cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1) # Draw label text
-
-            # Basic example: count the number of objects in the image
-            object_count = object_count + 1
-
-    # Calculate and draw framerate (if using video, USB, or Picamera source)
-    if source_type == 'video' or source_type == 'usb' or source_type == 'picamera':
-        cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10,20), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw framerate
-    
     # Display detection results
-    cv2.putText(frame, f'Number of objects: {object_count} Total_amount: {total_amount}', (10,40), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw total number of detected objects
-    cv2.imshow('YOLO detection results',frame) # Display image
+    cv2.putText(frame, f'Number of objects: {len(object_list)} Total amount: {total_amount:.2f}', (10,40), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw total number of detected objects
+    cv2.imshow('YOLO + TRACKING', frame)
     if record: recorder.write(frame)
 
-    # If inferencing on individual images, wait for user keypress before moving to next image. Otherwise, wait 5ms before moving to next frame.
-    if source_type == 'image' or source_type == 'folder':
-        key = cv2.waitKey()
-    elif source_type == 'video' or source_type == 'usb' or source_type == 'picamera':
-        key = cv2.waitKey(5)
-    
-    if key == ord('q') or key == ord('Q'): # Press 'q' to quit
+    key = cv2.waitKey(5)
+    if key in [ord('q'), ord('Q')]:
         break
-    elif key == ord('s') or key == ord('S'): # Press 's' to pause inference
-        cv2.waitKey()
-    elif key == ord('p') or key == ord('P'): # Press 'p' to save a picture of results on this frame
-        cv2.imwrite('capture.png',frame)
-    
-    # Calculate FPS for this frame
-    t_stop = time.perf_counter()
-    frame_rate_calc = float(1/(t_stop - t_start))
-
-    # Append FPS result to frame_rate_buffer (for finding average FPS over multiple frames)
-    if len(frame_rate_buffer) >= fps_avg_len:
-        temp = frame_rate_buffer.pop(0)
-        frame_rate_buffer.append(frame_rate_calc)
-    else:
-        frame_rate_buffer.append(frame_rate_calc)
-
-    # Calculate average FPS for past frames
-    avg_frame_rate = np.mean(frame_rate_buffer)
-
 
 print(f'paragonow dzis: {paragons_counter}, obrot razem: {day_amount:.2f}')
 
-# Clean up
-print(f'Average pipeline FPS: {avg_frame_rate:.2f}')
-if source_type == 'video' or source_type == 'usb':
-    cap.release()
-elif source_type == 'picamera':
-    cap.stop()
+cap.release()
 if record: recorder.release()
 cv2.destroyAllWindows()
