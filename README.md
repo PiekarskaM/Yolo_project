@@ -24,3 +24,10 @@ python yolo_detect_tracking.py --model my_model.pt --source usb0
 
 python yolo_detect_tracking.py --model my_model.pt --source test_film5.mp4
 
+
+
+## Przygotowanie danych, trenowanie, testowanie modelu i uruchomienie lokalne zostało krok po kroku opisane w notatniku Colab:
+
+https://colab.research.google.com/drive/1XDYI_d3Xu1aDj9JxgF9OVOFvgb15RDVH?usp=sharing
+ 
+

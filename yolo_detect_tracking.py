@@ -26,6 +26,9 @@ min_thresh = float(args.thresh)
 user_res = args.resolution
 record = args.record
 
+
+
+
 if not os.path.exists(model_path):
     print('Model not found!')
     sys.exit(0)
@@ -80,31 +83,42 @@ bbox_colors = [(164,120,87), (68,148,228), (93,97,209), (178,182,133), (88,159,1
                (96,202,231), (159,124,168), (169,162,241), (98,118,150), (172,176,184)]
 
 # --- SORT TRACKER ---
-tracker = Sort(max_age=15, min_hits=3) # prosty tracker
+tracker = Sort(max_age=20, min_hits=2) # prosty tracker
 tracked_objects = {}  # {track_id: classname} -> do "przytrzymania" klasy
 tracked_classes = {}
 
 price = {"kinder_bueno":3.62, "knoppers":4.52, "lion":2.71, "price_polo":2.71, "snickers":3.61, "twix":4.98 }
+printed = ''
 total_amount = 0.0
 object_list = []
 paragon = []
 paragons_counter = 0
 day_amount = 0
+avg_frame_rate = 0
+frame_rate_buffer = []
+fps_avg_len = 200
 
 
 
 # --- INFERENCE LOOP ---
 while True:
+    t_start = time.perf_counter()
     ret, frame = cap.read()
     if not ret:
         print('End of video / cannot read frame')
         break
 
     # resize na potrzeby wyświetlania
-    frame = cv2.resize(frame, (640,640))
+    h, w = frame.shape[:2]
+    new_w = 640
+    scale = new_w / w
+    new_h = int(h * scale)
+    frame = cv2.resize(frame, (new_w, new_h))
 
+
+    
     # YOLO DETECTION
-    results = model(frame, imgsz=416, verbose=False)
+    results = model(frame, imgsz=640, verbose=False)
     detections = results[0].boxes
 
     # --- PRZYGOTUJ DETECTIONS DLA TRACKERA ---
@@ -168,25 +182,60 @@ while True:
             if track_id not in object_list:
                 if label_class!="separator":
                     # track_id jeszcze nie dodany
-                    paragon.append(label_class)
+                    paragon.append(label_class+str(track_id))
                     object_list.append(track_id)
                     total_amount += price[label_class]
                 else:
                     if total_amount>0:
+                        object_list.append(track_id)
                         print(f'Paragon: ITEMS: {paragon},TOTAL: {total_amount:.2f}')
+                        printed = f'Paragon: ITEMS: {len(paragon)},TOTAL: {total_amount:.2f}'
                         paragon = []
                         paragons_counter += 1
                         day_amount += total_amount
                         total_amount = 0
 
+    # Calculate and draw framerate (if using video, USB, or Picamera source)
+    if source_type == 'video' or source_type == 'usb' or source_type == 'picamera':
+        cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10,20), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw framerate
+   
     # Display detection results
-    cv2.putText(frame, f'Number of objects: {len(object_list)} Total amount: {total_amount:.2f}', (10,40), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw total number of detected objects
+    #cv2.putText(frame, f'Number of objects: {len(object_list)} Total amount: {total_amount:.2f}', (10,40), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw total number of detected objects
+    
+    cv2.putText(frame, printed, (10,40), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,0), 2) # Draw paragon
+
+    
     cv2.imshow('YOLO + TRACKING', frame)
     if record: recorder.write(frame)
 
-    key = cv2.waitKey(5)
-    if key in [ord('q'), ord('Q')]:
+       # If inferencing on individual images, wait for user keypress before moving to next image. Otherwise, wait 5ms before moving to next frame.
+    if source_type == 'image' or source_type == 'folder':
+        key = cv2.waitKey()
+    elif source_type == 'video' or source_type == 'usb' or source_type == 'picamera':
+        key = cv2.waitKey(5)
+    
+    if key == ord('q') or key == ord('Q'): # Press 'q' to quit
         break
+    elif key == ord('s') or key == ord('S'): # Press 's' to pause inference
+        cv2.waitKey()
+    elif key == ord('p') or key == ord('P'): # Press 'p' to save a picture of results on this frame
+        cv2.imwrite('capture.png',frame)
+    
+    # Calculate FPS for this frame
+    t_stop = time.perf_counter()
+    frame_rate_calc = float(1/(t_stop - t_start))
+
+    # Append FPS result to frame_rate_buffer (for finding average FPS over multiple frames)
+    if len(frame_rate_buffer) >= fps_avg_len:
+        temp = frame_rate_buffer.pop(0)
+        frame_rate_buffer.append(frame_rate_calc)
+    else:
+        frame_rate_buffer.append(frame_rate_calc)
+
+    # Calculate average FPS for past frames
+    avg_frame_rate = np.mean(frame_rate_buffer)
+
+
 
 print(f'paragonow dzis: {paragons_counter}, obrot razem: {day_amount:.2f}')
 
